@@ -54,8 +54,8 @@ def test(model: nn.Module,
     pred = np.concatenate(pred)
     true = np.concatenate(true)
     acc = accuracy_score(true, pred)
-    recall = recall_score(true, pred)
-    precision = precision_score(true, pred, zero_division=np.nan)
+    recall = recall_score(true, pred, zero_division=0)
+    precision = precision_score(true, pred, zero_division=0)
     f1 = f1_score(true, pred)
     roc_auc = roc_auc_score(true, pred)
 
@@ -69,10 +69,10 @@ def train_multi(model: nn.Module,
     model.train()
 
     train_loss = 0
-    for content_data, bert_data, profile_data, spacy_data in train_loader:
+    for train_data in train_loader:
         optimizer.zero_grad()
-        out = model(content_data.to(device), bert_data.to(device), profile_data.to(device), spacy_data.to(device))
-        loss = F.nll_loss(out, content_data.y.to(device))
+        out = model([data.to(device) for data in train_data])
+        loss = F.nll_loss(out, train_data[0].y.to(device))
         loss.backward()
         optimizer.step()
         train_loss += loss.item()
@@ -86,9 +86,9 @@ def validate_multi(model: nn.Module,
 
     val_loss = 0
     with torch.inference_mode():
-        for content_data, bert_data, profile_data, spacy_data in val_loader:
-            out = model(content_data.to(device), bert_data.to(device), profile_data.to(device), spacy_data.to(device))
-            loss = F.nll_loss(out, content_data.y.to(device))
+        for val_data in val_loader:
+            out = model([data.to(device) for data in val_data])
+            loss = F.nll_loss(out, val_data[0].y.to(device))
             val_loss += loss.item()
     return val_loss / len(val_loader)
 
@@ -100,18 +100,17 @@ def test_multi(model: nn.Module,
     true = []
     model.eval()
     with torch.inference_mode():
-        for content_data, bert_data, profile_data, spacy_data in test_loader:
-            out = model(content_data.to(device), bert_data.to(device), profile_data.to(device), spacy_data.to(device))
+        for test_data in test_loader:
+            out = model([data.to(device) for data in test_data])
             preds = torch.argmax(F.softmax(out, dim=1), dim=-1)
             pred.append(preds.detach().cpu().numpy())
-            true.append(content_data.y.detach().cpu().numpy())
+            true.append(test_data[0].y.detach().cpu().numpy())
 
     pred = np.concatenate(pred)
     true = np.concatenate(true)
     acc = accuracy_score(true, pred)
-    acc = accuracy_score(true, pred)
-    recall = recall_score(true, pred)
-    precision = precision_score(true, pred, zero_division=np.nan)
+    recall = recall_score(true, pred, zero_division=0)
+    precision = precision_score(true, pred, zero_division=0)
     f1 = f1_score(true, pred)
     roc_auc = roc_auc_score(true, pred)
 

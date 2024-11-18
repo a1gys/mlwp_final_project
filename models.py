@@ -117,24 +117,30 @@ class UPFDSingle(nn.Module):
 class MultiFeatureNet(nn.Module):
 
     def __init__(self,
+                 features: list[str],
                  conv_layer: str,
                  hidden_dim: int,
                  out_dim: int,
                  dropout: float):
         super(MultiFeatureNet, self).__init__()
 
+        self.features = features
         self.dropout = dropout
-        self.content_dim = 310
-        self.bert_dim = 768
-        self.profile_dim = 10
-        self.spacy_dim = 300
 
-        self.content_lin = nn.Linear(self.content_dim, hidden_dim)
-        self.bert_lin = nn.Linear(self.bert_dim, hidden_dim)
-        self.profile_lin = nn.Linear(self.profile_dim, hidden_dim)
-        self.spacy_lin = nn.Linear(self.spacy_dim, hidden_dim)
+        if 'content' in features:
+            self.content_dim = 310
+            self.content_lin = nn.Linear(self.content_dim, hidden_dim)
+        if 'bert' in features:
+            self.bert_dim = 768
+            self.bert_lin = nn.Linear(self.bert_dim, hidden_dim)
+        if 'profile' in features:
+            self.profile_dim = 10
+            self.profile_lin = nn.Linear(self.profile_dim, hidden_dim)
+        if 'spacy' in features:
+            self.spacy_dim = 300
+            self.spacy_lin = nn.Linear(self.spacy_dim, hidden_dim)
 
-        combined_dim = hidden_dim * 4
+        combined_dim = hidden_dim * len(features)
 
         self.conv1 = get_conv_layer(combined_dim, hidden_dim, conv_layer)
         self.conv2 = get_conv_layer(hidden_dim, hidden_dim, conv_layer)
@@ -143,21 +149,30 @@ class MultiFeatureNet(nn.Module):
         self.lin2 = nn.Linear(hidden_dim, out_dim)
 
     def forward(self,
-                content_data: Data,
-                bert_data: Data,
-                profile_data: Data,
-                spacy_data: Data) -> Tensor:
-        content_x, edge_index, batch = content_data.x, content_data.edge_index, content_data.batch
-        bert_x = bert_data.x
-        profile_x = profile_data.x
-        spacy_x = spacy_data.x
+                data: list[Data]) -> Tensor:
+        embeddings = []
+        i = 0
+        if 'content' in self.features:
+            content_x, edge_index, batch = data[i].x, data[i].edge_index, data[i].batch
+            content_h = F.relu(self.content_lin(content_x))
+            embeddings.append(content_h)
+            i += 1
+        if 'bert' in self.features:
+            bert_x, edge_index, batch = data[i].x, data[i].edge_index, data[i].batch
+            bert_h = F.relu(self.bert_lin(bert_x))
+            embeddings.append(bert_h)
+            i += 1
+        if 'profile' in self.features:
+            profile_x, edge_index, batch = data[i].x, data[i].edge_index, data[i].batch
+            profile_h = F.relu(self.profile_lin(profile_x))
+            embeddings.append(profile_h)
+            i += 1
+        if 'spacy' in self.features:
+            spacy_x, edge_index, batch = data[i].x, data[i].edge_index, data[i].batch
+            spacy_h = F.relu(self.spacy_lin(spacy_x))
+            embeddings.append(spacy_h)
 
-        content_h = F.relu(self.content_lin(content_x))
-        bert_h = F.relu(self.bert_lin(bert_x))
-        profile_h = F.relu(self.profile_lin(profile_x))
-        spacy_h = F.relu(self.spacy_lin(spacy_x))
-
-        out = torch.cat([content_h, bert_h, profile_h, spacy_h], dim=1)
+        out = torch.cat(embeddings, dim=1)
 
         out = F.dropout(out, p=self.dropout, training=self.training)
         out = F.relu(self.conv1(out, edge_index))
@@ -180,6 +195,7 @@ class MultiFeatureNet(nn.Module):
 class ParallelFeatureNet(nn.Module):
 
     def __init__(self,
+                 features: list[str],
                  conv_layer: str,
                  hidden_dim: int,
                  out_dim: int,
@@ -187,16 +203,21 @@ class ParallelFeatureNet(nn.Module):
         super(ParallelFeatureNet, self).__init__()
 
         self.dropout = dropout
-        self.content_conv1 = get_conv_layer(310, hidden_dim, conv_layer)
-        self.content_conv2 = get_conv_layer(hidden_dim, hidden_dim, conv_layer)
-        self.bert_conv1 = get_conv_layer(768, hidden_dim, conv_layer)
-        self.bert_conv2 = get_conv_layer(hidden_dim, hidden_dim, conv_layer)
-        self.profile_conv1 = get_conv_layer(10, hidden_dim, conv_layer)
-        self.profile_conv2 = get_conv_layer(hidden_dim, hidden_dim, conv_layer)
-        self.spacy_conv1 = get_conv_layer(300, hidden_dim, conv_layer)
-        self.spacy_conv2 = get_conv_layer(hidden_dim, hidden_dim, conv_layer)
+        self.features = features
+        if 'content' in features:
+            self.content_conv1 = get_conv_layer(310, hidden_dim, conv_layer)
+            self.content_conv2 = get_conv_layer(hidden_dim, hidden_dim, conv_layer)
+        if 'bert' in features:
+            self.bert_conv1 = get_conv_layer(768, hidden_dim, conv_layer)
+            self.bert_conv2 = get_conv_layer(hidden_dim, hidden_dim, conv_layer)
+        if 'profile' in features:
+            self.profile_conv1 = get_conv_layer(10, hidden_dim, conv_layer)
+            self.profile_conv2 = get_conv_layer(hidden_dim, hidden_dim, conv_layer)
+        if 'spacy' in features:
+            self.spacy_conv1 = get_conv_layer(300, hidden_dim, conv_layer)
+            self.spacy_conv2 = get_conv_layer(hidden_dim, hidden_dim, conv_layer)
 
-        self.lin1 = nn.Linear(hidden_dim * 4, hidden_dim)
+        self.lin1 = nn.Linear(hidden_dim * len(self.features), hidden_dim)
         self.lin2 = nn.Linear(hidden_dim, out_dim)
 
     def process_branch(self, x, edge_index, conv1, conv2):
@@ -207,21 +228,30 @@ class ParallelFeatureNet(nn.Module):
         return out
 
     def forward(self,
-                content_data: Data,
-                bert_data: Data,
-                profile_data: Data,
-                spacy_data: Data) -> Tensor:
-        content_x, edge_index, batch = content_data.x, content_data.edge_index, content_data.batch
-        bert_x = bert_data.x
-        profile_x = profile_data.x
-        spacy_x = spacy_data.x
+                data: dict[Data]) -> Tensor:
+        embeddings = []
+        i = 0
+        if 'content' in self.features:
+            content_x, edge_index, batch = data[i].x, data[i].edge_index, data[i].batch
+            content_h = self.process_branch(content_x, edge_index, self.content_conv1, self.content_conv2)
+            embeddings.append(content_h)
+            i += 1
+        if 'bert' in self.features:
+            bert_x, edge_index, batch = data[i].x, data[i].edge_index, data[i].batch
+            bert_h = self.process_branch(bert_x, edge_index, self.bert_conv1, self.bert_conv2)
+            embeddings.append(bert_h)
+            i += 1
+        if 'profile' in self.features:
+            profile_x, edge_index, batch = data[i].x, data[i].edge_index, data[i].batch
+            profile_h = self.process_branch(profile_x, edge_index, self.profile_conv1, self.profile_conv2)
+            embeddings.append(profile_h)
+            i += 1
+        if 'spacy' in self.features:
+            spacy_x, edge_index, batch = data[i].x, data[i].edge_index, data[i].batch
+            spacy_h = self.process_branch(spacy_x, edge_index, self.spacy_conv1, self.spacy_conv2)
+            embeddings.append(spacy_h)
 
-        content_h = self.process_branch(content_x, edge_index, self.content_conv1, self.content_conv2)
-        bert_h = self.process_branch(bert_x, edge_index, self.bert_conv1, self.bert_conv2)
-        profile_h = self.process_branch(profile_x, edge_index, self.profile_conv1, self.profile_conv2)
-        spacy_h = self.process_branch(spacy_x, edge_index, self.spacy_conv1, self.spacy_conv2)
-
-        out = torch.cat([content_h, bert_h, profile_h, spacy_h], dim=1)
+        out = torch.cat(embeddings, dim=1)
 
         out = global_mean_pool(out, batch)
 
