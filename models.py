@@ -91,19 +91,16 @@ class UPFDSingle(nn.Module):
     def forward(self, data: Data) -> Tensor:
         x, edge_index, batch = data.x, data.edge_index, data.batch
 
-        # out = F.dropout(x, p=self.dropout, training=self.training)
         out = self.conv1(x, edge_index)
         out = F.relu(out)
 
-        # out = F.dropout(out, p=self.dropout, training=self.training)
-        # out = self.conv2(out, edge_index)
+        out = self.conv2(out, edge_index)
         out = F.relu(out)
 
         out = global_mean_pool(out, batch)
 
-        # out = F.dropout(out, p=self.dropout, training=self.training)
         out = F.relu(self.lin1(out))
-        # out = F.dropout(out, p=self.dropout, training=self.training)
+        out = F.dropout(out, p=self.dropout, training=self.training)
         out = self.lin2(out)
         out = F.log_softmax(out, dim=-1)
 
