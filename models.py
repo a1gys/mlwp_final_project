@@ -6,8 +6,6 @@ from torch import Tensor
 from torch_geometric.nn import GCNConv, SAGEConv, GATConv, global_max_pool, global_mean_pool
 from torch_geometric.data import Data
 
-from layers import PARMAImproved
-
 
 def get_conv_layer(in_dim: int,
                    out_dim: int,
@@ -20,8 +18,6 @@ def get_conv_layer(in_dim: int,
         return SAGEConv(in_dim, out_dim)
     elif conv_layer == 'gat':
         return GATConv(in_dim, out_dim, heads=heads, dropout=dropout)
-    elif conv_layer == 'parma':
-        return PARMAImproved(in_dim, out_dim, period=2, timestamps=2, dropout=dropout)
     else:
         raise NotImplementedError(f'Unknown conv layer: {conv_layer}')
 
